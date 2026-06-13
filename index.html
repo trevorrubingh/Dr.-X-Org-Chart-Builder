@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Org Chart Builder</title>
+<style>
+  :root{
+    --bg:#e9edf2;
+    --grid:#d3dae2;
+    --ink:#16233b;
+    --muted:#5d6b80;
+    --faint:#8b97a8;
+    --line:#cdd5df;
+    --panel:#ffffff;
+    --accent:#2f5d99;
+    --accent-soft:#e4ecf6;
+    --direct:#3a4a66;
+    --secondary:#93a0b2;
+    --danger:#b23a48;
+    --shadow:0 1px 2px rgba(20,35,59,.08),0 6px 18px rgba(20,35,59,.10);
+    --radius:10px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:var(--font);
+    color:var(--ink);
+    background:var(--bg);
+    display:flex;flex-direction:column;height:100vh;overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Toolbar ---------- */
+  header{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:10px 16px;background:var(--panel);
+    border-bottom:1px solid var(--line);z-index:30;
+    box-shadow:0 1px 0 rgba(20,35,59,.03);
+  }
+  .brand{display:flex;align-items:baseline;gap:9px;margin-right:4px}
+  .brand .mark{
+    width:18px;height:18px;border-radius:4px;background:var(--accent);
+    position:relative;flex:none;top:3px;
+  }
+  .brand .mark::after{
+    content:"";position:absolute;left:4px;top:9px;width:10px;height:5px;
+    border:1.5px solid #fff;border-top:none;border-radius:0 0 3px 3px;
+  }
+  .brand h1{font-size:15px;font-weight:700;letter-spacing:-.2px;margin:0}
+  .brand span{font-size:11px;color:var(--faint);letter-spacing:.04em;text-transform:uppercase}
+
+  .group{display:flex;align-items:center;gap:6px}
+  .divider{width:1px;height:24px;background:var(--line);margin:0 2px}
+
+  button.tool{
+    font:inherit;font-size:13px;font-weight:550;color:var(--ink);
+    background:var(--panel);border:1px solid var(--line);
+    padding:7px 12px;border-radius:8px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;line-height:1;
+    transition:background .12s,border-color .12s,color .12s;white-space:nowrap;
+  }
+  button.tool:hover{background:#f3f6fa;border-color:#bcc6d2}
+  button.tool:active{background:#e9eef4}
+  button.tool.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.tool.primary:hover{background:#27508a}
+  button.tool.on{background:var(--accent-soft);border-color:#a9c3e2;color:var(--accent)}
+  button.tool svg{width:15px;height:15px;display:block}
+  button.ghost{background:transparent;border-color:transparent;color:var(--muted);padding:7px 9px}
+  button.ghost:hover{background:#eef2f6;color:var(--ink)}
+
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+  .seg button{
+    font:inherit;font-size:12.5px;font-weight:550;border:none;background:transparent;
+    padding:7px 11px;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:7px;
+  }
+  .seg button + button{border-left:1px solid var(--line)}
+  .seg button.active{background:var(--accent-soft);color:var(--accent)}
+  .seg .line-d{width:22px;height:0;border-top:2px solid currentColor}
+  .seg .line-s{width:22px;height:0;border-top:2px dashed currentColor}
+
+  .spacer{flex:1}
+  .hint{
+    font-size:12.5px;color:var(--muted);background:#f1f5f9;border:1px solid var(--line);
+    padding:6px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  }
+  .hint b{color:var(--accent);font-weight:650}
+  .hint .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+
+  /* ---------- Canvas ---------- */
+  .stage{position:relative;flex:1;overflow:hidden;touch-action:none;background:
+    radial-gradient(var(--grid) 1.3px, transparent 1.3px);
+    background-size:22px 22px;background-position:-1px -1px;}
+  .stage.connect{cursor:crosshair}
+  .stage.panning{cursor:grabbing}
+  .content{position:absolute;top:0;left:0;width:4200px;height:3000px;transform-origin:0 0;will-change:transform}
+  svg.wires{position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+  svg.wires .hit{stroke:transparent;stroke-width:18;fill:none;pointer-events:stroke;cursor:pointer}
+  svg.wires path.body{fill:none;stroke-linejoin:round;stroke-linecap:round}
+  svg.wires path.body.sel{stroke:var(--accent)!important}
+  svg.wires polygon.head.sel{fill:var(--accent)!important;stroke:var(--accent)!important}
+
+  /* ---------- Node ---------- */
+  .node{
+    position:absolute;width:190px;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden;user-select:none;
+    transition:box-shadow .12s,border-color .12s;
+  }
+  .stage:not(.connect) .node{cursor:grab}
+  .stage:not(.connect) .node:active{cursor:grabbing}
+  .node .bar{height:5px;background:var(--c,#5d6b80)}
+  .node .body{padding:9px 11px 11px}
+  .node input{
+    display:block;width:100%;border:none;background:transparent;font:inherit;color:inherit;
+    padding:2px 3px;border-radius:5px;margin:0;outline:none;
+  }
+  .node input.role{font-weight:700;font-size:13.5px;letter-spacing:-.1px;color:var(--ink)}
+  .node input.name{font-size:12.5px;color:var(--muted);margin-top:2px;font-weight:500}
+  .node input::placeholder{color:var(--faint);font-weight:500}
+  .stage:not(.connect) .node input:focus{background:#eef3f9;cursor:text}
+  .stage.connect .node input{pointer-events:none}
+  .node.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),var(--shadow)}
+  .node.same{border-color:#caa14a;box-shadow:0 0 0 2px #f3e6c4,var(--shadow)}
+  .node.pending{border-color:var(--accent);box-shadow:0 0 0 3px #c5d9f1,var(--shadow)}
+  .node .multi{
+    position:absolute;top:6px;right:7px;font-size:10px;font-weight:700;color:#9a7b2e;
+    background:#f6edd2;border-radius:10px;padding:1px 6px;letter-spacing:.02em;
+  }
+  /* division box — a structural label, no person */
+  .node.division{width:180px;border-color:var(--db,#cdd5df);background:var(--dbg,#f4f6f9)}
+  .node.division .bar{height:6px}
+  .node.division .body{padding:8px 12px}
+  .node.division input.label{
+    font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--ink);text-align:center;
+    text-transform:uppercase;
+  }
+  .node.division input.label::placeholder{text-transform:none;letter-spacing:0}
+  .node.division .tag{
+    position:absolute;top:7px;left:8px;font-size:8.5px;font-weight:700;letter-spacing:.08em;
+    color:var(--faint);text-transform:uppercase;pointer-events:none;
+  }
+
+  /* ---------- Floating mini toolbar ---------- */
+  .mini{
+    position:absolute;display:flex;align-items:center;gap:3px;
+    background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    box-shadow:var(--shadow);padding:4px;z-index:20;
+  }
+  .mini button{
+    font:inherit;font-size:11px;color:var(--muted);background:transparent;border:none;
+    padding:4px 7px;cursor:pointer;border-radius:6px;transition:background .08s,color .08s;
+  }
+  .mini button:hover{background:#eef2f6;color:var(--ink)}
+  .mini button svg{width:14px;height:14px;display:block}
+
+  /* ---------- Popover ---------- */
+  .apop{
+    position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    box-shadow:var(--shadow);z-index:25;padding:8px 10px;font-size:12px;
+  }
+  .apop .row{display:flex;align-items:center;gap:7px;margin:4px 0}
+  .apop .btn{
+    padding:4px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);
+    font:inherit;border:none;cursor:pointer;font-size:11px;font-weight:600;
+  }
+  .apop .btn:hover{background:#cfe0f0}
+  .apop .swatch{
+    width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,.1);cursor:pointer;
+    flex:none;
+  }
+
+  /* ---------- Sidebar ---------- */
+  #sidebar{
+    width:280px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;overflow:hidden;z-index:10;
+    box-shadow:-1px 0 0 rgba(20,35,59,.03);
+  }
+  #sidebarInner{flex:1;overflow-y:auto;padding:12px}
+  #sidebar h2{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--faint);margin:0 0 7px;padding-top:8px;
+  }
+  #sidebar h2:first-child{padding-top:0}
+  #sidebar .item{
+    display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:7px;
+    font-size:12.5px;cursor:pointer;transition:background .08s;margin-bottom:4px;
+  }
+  #sidebar .item:hover{background:#f3f6fa}
+  #sidebar .item.sel{background:var(--accent-soft);color:var(--accent)}
+  #sidebar .swatch{
+    width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.1);flex:none;
+  }
+  #sidebar .label{flex:1;font-weight:500}
+  #sidebar .count{
+    font-size:11px;color:var(--faint);font-weight:600;flex:none;
+  }
+  #legend{margin-top:12px}
+  #legendList{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;
+  }
+  #legendList .ledge{
+    padding:8px 9px;background:#f8f9fb;border:1px solid var(--line);border-radius:7px;
+    font-size:11px;
+    display:flex;align-items:center;gap:6px;
+  }
+  #legendList .ledge input{
+    display:block;width:100%;border:none;background:transparent;font:inherit;
+    outline:none;color:var(--ink);font-weight:500;padding:0;margin:0;
+  }
+  #legendList .swatch{width:12px;height:12px;border-radius:3px;flex:none}
+
+  /* ---------- Empty state ---------- */
+  .empty{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    text-align:center;pointer-events:none;
+  }
+  .empty h2{
+    font-size:24px;font-weight:600;color:var(--ink);margin:0 0 12px;
+  }
+  .empty p{
+    font-size:13.5px;color:var(--muted);margin:0 0 18px;line-height:1.5;
+  }
+  .empty .cta{
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .empty .cta button{
+    font:inherit;font-size:13px;font-weight:600;
+    padding:10px 16px;border-radius:8px;border:none;cursor:pointer;
+    background:var(--accent);color:#fff;
+  }
+  .empty .cta button:hover{background:#27508a}
+  .empty .cta a{
+    font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;
+  }
+  .empty .cta a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark"></div>
+    <h1>Org Chart Builder</h1>
+    <span>V1</span>
+  </div>
+  <div class="group">
+    <button id="addBtn" class="tool primary"><span>+ Add role</span></button>
+    <button id="addDivBtn" class="tool"><span>+ Add division</span></button>
+  </div>
+  <div class="divider"></div>
+  <div class="group">
+    <button id="connectBtn" class="tool"><span>Connect</span></button>
+    <div class="seg">
+      <button id="styleSeg" data-style="direct" class="active"><div class="line-d"></div></button>
+      <button data-style="secondary"><div class="line-s"></div></button>
+    </div>
+    <div id="styleSeg" style="display:none"></div>
+  </div>
+  <div class="divider"></div>
+  <button id="snapBtn" class="tool ghost"><span>Snap</span></button>
+  <div class="spacer"></div>
+  <button id="saveBtn" class="tool"><span>Save</span></button>
+  <button id="openBtn" class="tool"><span>Open</span></button>
+  <button id="pngBtn" class="tool"><span>Image</span></button>
+  <input type="file" id="fileInput" accept=".json" style="display:none">
+  <div class="divider"></div>
+  <div class="group" style="gap:2px">
+    <button id="zoomOut" class="tool ghost">−</button>
+    <button id="zoomLvl" class="tool ghost" style="flex:0 0 auto;min-width:45px;padding:7px 6px"><span id="zoomDisplay">100%</span></button>
+    <button id="zoomIn" class="tool ghost">+</button>
+  </div>
+  <button id="zoomFit" class="tool ghost"><span>Fit</span></button>
+  <button id="fitTop" class="tool ghost"><span>Home</span></button>
+</header>
+
+<div style="display:flex;flex:1;overflow:hidden">
+  <div class="stage" id="stage">
+    <div class="content" id="content">
+      <svg class="wires" id="wires"></svg>
+    </div>
+    <div class="empty" id="empty" style="display:none">
+      <h2>Start your org chart</h2>
+      <p style="max-width:280px">Add a role, type the title and the person's name, then switch to Connect to draw reporting lines.</p>
+      <div class="cta">
+        <button id="emptyAdd">Add first role</button>
+        <a id="exampleBtn" href="#">Load NCN example</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div id="sidebarInner">
+      <h2>Divisions</h2>
+      <div id="legend">
+        <button id="legendToggle" style="width:100%;text-align:left;padding:0;margin:0;background:none;border:none;cursor:pointer;color:var(--ink);font-weight:600;font-size:13px">▾ 100% <span style="float:right">+</span></button>
+        <div id="legendList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const COLORS=[
+    {c:"#e74c3c",n:"Red"},
+    {c:"#3498db",n:"Blue"},
+    {c:"#2ecc71",n:"Green"},
+    {c:"#f39c12",n:"Orange"},
+    {c:"#9b59b6",n:"Purple"},
+    {c:"#1abc9c",n:"Teal"},
+    {c:"#34495e",n:"Slate"},
+    {c:"#e67e22",n:"Burnt Orange"},
+  ];
+  const PALETTE=COLORS;
+  let state={boxes:[],arrows:[]};
+  let sel=new Set(), selArrow=null, apop=null;
+  let history=[], snapGrid=false, lineStyle="direct", zoom=1, panX=0, panY=0, mode="select";
+
+  /* Storage */
+  async function tryRestore(){
+    try{
+      const stored=localStorage.getItem("orgChartState");
+      if(stored){state=JSON.parse(stored);return true;}
+    }catch(e){}
+    return false;
+  }
+  function autosave(){ try{localStorage.setItem("orgChartState",JSON.stringify(state));}catch(e){} }
+  function pushHistory(){ history.push(JSON.parse(JSON.stringify(state))); }
+  function save(){
+    const json=JSON.stringify(state,null,2);
+    const blob=new Blob([json],{type:"application/json"});
+    download(blob,"org-chart.json");
+  }
+  function openFile(file){
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const data=JSON.parse(e.target.result);
+        if(data.boxes&&data.arrows){
+          pushHistory();
+          state=normalize(data);
+          fullRender();
+          autosave();
+        }
+      }catch(err){ alert("Invalid file"); }
+    };
+    reader.readAsText(file);
+  }
+  function download(blob,name){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  /* State management */
+  function normalize(s){
+    s.boxes=s.boxes||[];s.arrows=s.arrows||[];
+    s.boxes.forEach(b=>{if(!b.id)b.id=uid("b");if(!b.kind)b.kind="role";if(!b.color)b.color=COLORS[0].c});
+    s.arrows.forEach(a=>{if(!a.id)a.id=uid("a");if(!a.type)a.type="direct"});
+    s.legend=s.legend||{};
+    return s;
+  }
+  function uid(prefix){
+    return prefix+Math.random().toString(36).substr(2,9);
+  }
+  function addBox(kind){
+    pushHistory();
+    const box={
+      id:uid("b"),kind,
+      role:kind==="division"?"Division":"Role",
+      name:"",x:500+Math.random()*100,y:300+Math.random()*100,
+      color:kind==="division"?COLORS[Math.floor(Math.random()*COLORS.length)].c:COLORS[0].c
+    };
+    state.boxes.push(box);
+    fullRender();
+    afterChange();
+  }
+  function deleteSelection(){
+    if(!sel.size)return;
+    pushHistory();
+    const delIds=new Set(sel);
+    state.boxes=state.boxes.filter(b=>!delIds.has(b.id));
+    state.arrows=state.arrows.filter(a=>!delIds.has(a.from)&&!delIds.has(a.to));
+    sel.clear();fullRender();afterChange();
+  }
+  function deselectAll(){
+    sel.clear();if(apop){apop.remove();apop=null;}renderBoxes();
+  }
+  function setMode(m){
+    mode=m;
+    document.getElementById("connectBtn").classList.toggle("on",mode==="connect");
+    document.querySelector(".stage").classList.toggle("connect",mode==="connect");
+    deselectAll();
+  }
+
+  /* Rendering */
+  function renderBoxes(){
+    const content=document.getElementById("content");
+    content.querySelectorAll(".node").forEach(n=>n.remove());
+    state.boxes.forEach(b=>{
+      const node=document.createElement("div");
+      node.className="node"+(b.kind==="division"?" division":"")+(sel.has(b.id)?" sel":"");
+      node.style.left=b.x+"px";
+      node.style.top=b.y+"px";
+      if(b.kind==="division"){
+        node.style.setProperty("--c",b.color);
+        node.style.setProperty("--db",b.color);
+        node.style.setProperty("--dbg",rgba(b.color,0.08));
+        node.innerHTML=`
+          <div class="bar"></div>
+          <div class="tag">Division</div>
+          <div class="body"><input class="label" placeholder="Division name" value="${esc(b.role)}"></div>
+        `;
+      }else{
+        node.style.setProperty("--c",b.color);
+        node.innerHTML=`
+          <div class="bar"></div>
+          <div class="body">
+            <input class="role" placeholder="Role" value="${esc(b.role)}">
+            <input class="name" placeholder="Person name" value="${esc(b.name)}">
+          </div>
+          ${state.boxes.filter(x=>x.id!==b.id&&state.arrows.some(a=>(a.from===x.id||a.to===x.id)&&(a.from===b.id||a.to===b.id))).length>1?'<div class="multi">+'+state.boxes.filter(x=>x.id!==b.id&&state.arrows.some(a=>(a.from===x.id||a.to===x.id)&&(a.from===b.id||a.to===b.id))).length+'</div>':''}
+        `;
+      }
+      const roleInp=node.querySelector(".role, .label");
+      const nameInp=node.querySelector(".name");
+      if(roleInp){roleInp.addEventListener("input",()=>{b.role=roleInp.value;afterChange();});}
+      if(nameInp){nameInp.addEventListener("input",()=>{b.name=nameInp.value;afterChange();});}
+      node.addEventListener("mousedown",e=>{
+        if(document.activeElement===roleInp||document.activeElement===nameInp)return;
+        e.preventDefault();
+        if(mode==="connect")return;
+        const start={x:e.clientX,y:e.clientY,bx:b.x,by:b.y};
+        const onMove=e=>{
+          const dx=(e.clientX-start.x)/zoom, dy=(e.clientY-start.y)/zoom;
+          let nx=start.bx+dx, ny=start.by+dy;
+          if(snapGrid){nx=Math.round(nx/10)*10;ny=Math.round(ny/10)*10;}
+          sel.forEach(id=>{
+            const box=state.boxes.find(x=>x.id===id);
+            if(box){box.x=start.bx+dx;box.y=start.by+dy;if(snapGrid){box.x=Math.round(box.x/10)*10;box.y=Math.round(box.y/10)*10;}}
+          });
+          renderBoxes();
+        };
+        const onUp=()=>{
+          document.removeEventListener("mousemove",onMove);
+          document.removeEventListener("mouseup",onUp);
+          if(sel.size)pushHistory();
+          afterChange();
+        };
+        if(!sel.has(b.id)){sel.clear();sel.add(b.id);}
+        document.addEventListener("mousemove",onMove);
+        document.addEventListener("mouseup",onUp);
+        renderBoxes();
+      });
+      node.addEventListener("click",e=>{
+        if(mode==="connect")return;
+        if(!e.ctrlKey&&!e.metaKey)sel.clear();
+        sel.add(b.id);
+        renderBoxes();
+        showMiniFor(b);
+      });
+      content.appendChild(node);
+    });
+    buildLegend();
+    updateEmpty();
+  }
+  function showMiniFor(b){
+    if(apop){apop.remove()}
+    if(b.kind==="division")return;
+    apop=document.createElement("div");
+    apop.className="mini";
+    apop.style.left=(b.x+105)+"px";
+    apop.style.top=(b.y-35)+"px";
+    apop.innerHTML=COLORS.map((c,i)=>`<button style="background:${c.c}" class="swatch" title="${c.n}"></button>`).join("");
+    apop.querySelectorAll(".swatch").forEach((btn,i)=>{
+      btn.onclick=()=>{pushHistory();b.color=COLORS[i].c;renderBoxes();showMiniFor(b);afterChange();}
+    });
+    document.getElementById("content").appendChild(apop);
+  }
+  function renderArrows(){
+    const svg=document.getElementById("wires");
+    svg.innerHTML="";
+    rebuildBus();
+    state.arrows.forEach(a=>{
+      const p=pathFor(a);
+      if(!p)return;
+      const pathEl=document.createElementNS("http://www.w3.org/2000/svg","path");
+      pathEl.setAttribute("class","body"+(selArrow===a.id?" sel":""));
+      const col=a.type==="secondary"?"#93a0b2":"#3a4a66";
+      pathEl.setAttribute("stroke",col);
+      pathEl.setAttribute("stroke-width",selArrow===a.id?"3":"2");
+      pathEl.setAttribute("d",p.d);
+      if(a.type==="secondary")pathEl.setAttribute("stroke-dasharray","6 5");
+      svg.appendChild(pathEl);
+
+      const poly=document.createElementNS("http://www.w3.org/2000/svg","polygon");
+      poly.setAttribute("class","head"+(selArrow===a.id?" sel":""));
+      poly.setAttribute("fill",col);
+      poly.setAttribute("points",headPts(p.end,p.dir,0));
+      svg.appendChild(poly);
+
+      const hit=document.createElementNS("http://www.w3.org/2000/svg","path");
+      hit.setAttribute("class","hit");
+      hit.setAttribute("d",p.d);
+      hit.onclick=()=>{selArrow=a.id;renderArrows();showApop();}
+      svg.appendChild(hit);
+    });
+  }
+  function buildLegend(){
+    const used=new Set(state.boxes.filter(b=>b.kind==="division").map(b=>b.color));
+    document.getElementById("legendList").innerHTML=Array.from(used).map(c=>{
+      const d=COLORS.find(p=>p.c===c);
+      const label=(c in state.legend)?state.legend[c]:(d?d.n:"");
+      return `
+        <div class="ledge">
+          <div class="swatch" style="background:${c}"></div>
+          <input type="text" placeholder="Label" value="${esc(label)}" data-color="${c}">
+        </div>
+      `;
+    }).join("");
+    document.querySelectorAll("#legendList input").forEach(inp=>{
+      inp.addEventListener("input",()=>{
+        const c=inp.dataset.color;
+        state.legend[c]=inp.value;
+        afterChange();
+      });
+    });
+  }
+  function updateEmpty(){
+    const empty=state.boxes.length===0;
+    document.getElementById("empty").style.display=empty?"block":"none";
+  }
+
+  /* Arrow routing */
+  let bus=[];
+  function rebuildBus(){
+    bus=[];
+    state.arrows.forEach(a=>{
+      const from=state.boxes.find(x=>x.id===a.from);
+      const to=state.boxes.find(x=>x.id===a.to);
+      if(from&&to){
+        bus.push({
+          x1:from.x+95,y1:from.y+25,
+          x2:to.x+95,y2:to.y-5
+        });
+      }
+    });
+  }
+  function pathFor(a){
+    const from=state.boxes.find(x=>x.id===a.from);
+    const to=state.boxes.find(x=>x.id===a.to);
+    if(!from||!to)return null;
+    const x1=from.x+95, y1=from.y+25, x2=to.x+95, y2=to.y-5;
+    const avoidDist=40, checkDist=60;
+    let dx=x2-x1, dy=y2-y1;
+    let bend=Math.max(Math.abs(dx),Math.abs(dy))*0.4;
+    let offset=0;
+    bus.forEach(b=>{
+      if(Math.abs(b.x1-x1)<1&&Math.abs(b.y1-y1)<1&&Math.abs(b.x2-x2)<1&&Math.abs(b.y2-y2)<1)return;
+      if(Math.abs(b.x1-x1)<checkDist&&Math.abs(b.x2-x2)<checkDist){offset+=avoidDist;}
+    });
+    const dir=dy>0?1:-1;
+    const d=`M ${x1} ${y1} Q ${x1+offset} ${y1+bend*dir} ${x2} ${y2}`;
+    return {d,end:{x:x2,y:y2},dir:dy>0?90:270};
+  }
+  function headPts(end,dir,scale){
+    const size=8+scale;
+    const rad=(dir-90)*Math.PI/180;
+    const x1=end.x+Math.cos(rad+Math.PI/6)*size;
+    const y1=end.y+Math.sin(rad+Math.PI/6)*size;
+    const x2=end.x+Math.cos(rad-Math.PI/6)*size;
+    const y2=end.y+Math.sin(rad-Math.PI/6)*size;
+    return `${end.x},${end.y} ${x1},${y1} ${x2},${y2}`;
+  }
+  function showApop(){
+    if(apop){apop.remove()}
+    if(!selArrow)return;
+    const a=state.arrows.find(x=>x.id===selArrow);
+    if(!a)return;
+    const p=pathFor(a);
+    if(!p)return;
+    apop=document.createElement("div");
+    apop.className="apop";
+    apop.style.left=(p.end.x+10)+"px";
+    apop.style.top=(p.end.y-50)+"px";
+    apop.innerHTML=`
+      <div class="row">
+        <span>Line style</span>
+        <button class="btn" data-action="delete">Delete</button>
+      </div>
+    `;
+    apop.querySelector('[data-action="delete"]').onclick=()=>{
+      pushHistory();
+      state.arrows=state.arrows.filter(x=>x.id!==selArrow);
+      selArrow=null;
+      renderArrows();
+      apop.remove();apop=null;
+      afterChange();
+    };
+    document.getElementById("content").appendChild(apop);
+  }
+
+  /* Interaction */
+  const stage=document.getElementById("stage");
+  const content=document.getElementById("content");
+  stage.addEventListener("click",e=>{
+    if(e.target!==stage)return;
+    if(mode==="connect"){
+      const rect=stage.getBoundingClientRect();
+      const sx=(e.clientX-rect.left)/zoom-panX, sy=(e.clientY-rect.top)/zoom-panY;
+      const from=state.boxes.find(b=>sel.has(b.id));
+      if(from&&sel.size===1){
+        state.boxes.forEach(b=>{
+          const dx=b.x+95-sx, dy=b.y+25-sy;
+          if(Math.sqrt(dx*dx+dy*dy)<30){
+            if(!state.arrows.find(a=>a.from===from.id&&a.to===b.id)){
+              pushHistory();
+              state.arrows.push({id:uid("a"),from:from.id,to:b.id,type:"direct"});
+              fullRender();afterChange();
+            }
+          }
+        });
+      }
+    }else{
+      deselectAll();
+    }
+  });
+  stage.addEventListener("wheel",e=>{
+    e.preventDefault();
+    const factor=e.deltaY>0?1/1.2:1.2;
+    zoomBy(factor);
+  });
+  let panStart=null;
+  stage.addEventListener("mousedown",e=>{
+    if(mode==="connect"||e.button!==2)return;
+    panStart={x:e.clientX,y:e.clientY,px:panX,py:panY};
+    stage.classList.add("panning");
+  });
+  document.addEventListener("mousemove",e=>{
+    if(!panStart)return;
+    panX=panStart.px+(e.clientX-panStart.x)/zoom;
+    panY=panStart.py+(e.clientY-panStart.y)/zoom;
+    updateTransform();
+  });
+  document.addEventListener("mouseup",()=>{panStart=null;stage.classList.remove("panning");});
+  stage.addEventListener("contextmenu",e=>e.preventDefault());
+
+  /* Zoom & pan */
+  function zoomBy(factor){
+    zoom*=factor;
+    zoom=Math.max(0.2,Math.min(zoom,3));
+    updateTransform();
+    document.getElementById("zoomDisplay").textContent=Math.round(zoom*100)+"%";
+  }
+  function resetZoom(){
+    zoom=1;panX=0;panY=0;
+    updateTransform();
+    document.getElementById("zoomDisplay").textContent="100%";
+  }
+  function fitView(){
+    if(!state.boxes.length){resetZoom();return;}
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    state.boxes.forEach(b=>{
+      minX=Math.min(minX,b.x);maxX=Math.max(maxX,b.x+190);
+      minY=Math.min(minY,b.y);maxY=Math.max(maxY,b.y+60);
+    });
+    const rect=stage.getBoundingClientRect();
+    const pad=40;
+    zoom=Math.min((rect.width-pad)/(maxX-minX),(rect.height-pad)/(maxY-minY));
+    zoom=Math.min(zoom,1.5);
+    panX=-(minX-(pad/2/zoom));
+    panY=-(minY-(pad/2/zoom));
+    updateTransform();
+    document.getElementById("zoomDisplay").textContent=Math.round(zoom*100)+"%";
+  }
+  function updateTransform(){
+    content.style.transform=`translate(${panX*zoom}px,${panY*zoom}px) scale(${zoom})`;
+  }
+  function afterChange(){
+    autosave();
+    updateEmpty();
+  }
+
+  /* Export */
+  function rgba(hex,a){
+    const r=parseInt(hex.slice(1,3),16);
+    const g=parseInt(hex.slice(3,5),16);
+    const b=parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  function exportPNG(){
+    if(!state.boxes.length)return;
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    state.boxes.forEach(b=>{
+      minX=Math.min(minX,b.x);maxX=Math.max(maxX,b.x+190);
+      minY=Math.min(minY,b.y);maxY=Math.max(maxY,b.y+70);
+    });
+    const used=new Set(state.boxes.filter(b=>b.kind==="division").map(b=>b.color));
+    const legendH=used.size?18+used.size*18:0;
+    const pad=20;
+    const W=maxX-minX+pad*2, H=maxY-minY+pad*2+legendH;
+    const ox=pad-minX, oy=pad-minY;
+    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    svg+=`<rect width="${W}" height="${H}" fill="#ffffff"/>`;
+    // arrows (same routing as on screen, with white halos)
+    rebuildBus();
+    const epaths=[];
+    state.arrows.forEach(a=>{ const p=pathFor(a); if(p) epaths.push({a,p,d:shiftPath(p.d,ox,oy),e:{x:p.end.x+ox,y:p.end.y+oy}}); });
+    epaths.forEach(({d,e,p})=>{ svg+=`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`;
+      svg+=`<polygon points="${headPts(e,p.dir,2.5)}" fill="#ffffff" stroke="#ffffff" stroke-width="3"/>`; });
+    epaths.forEach(({a,d})=>{ const col=a.type==="secondary"?"#93a0b2":"#3a4a66";
+      svg+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${a.type==="secondary"?' stroke-dasharray="6 5"':''}/>`; });
+    epaths.forEach(({a,e,p})=>{ const col=a.type==="secondary"?"#93a0b2":"#3a4a66";
+      svg+=`<polygon points="${headPts(e,p.dir,0)}" fill="${col}"/>`; });
+    // boxes
+    state.boxes.forEach(b=>{
+      const r=boxRect(b); const x=r.x+ox, y=r.y+oy;
+      svg+=`<g>`;
+      if(b.kind==="division"){
+        svg+=`<rect x="${x}" y="${y}" width="${r.w}" height="${r.h}" rx="10" fill="${rgba(b.color,0.10)}" stroke="${rgba(b.color,0.45)}"/>`;
+        svg+=`<rect x="${x+1}" y="${y+1}" width="${r.w-2}" height="6" rx="2" fill="${b.color}"/>`;
+        svg+=`<text x="${x+r.w/2}" y="${y+r.h/2+5}" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Arial" font-size="13" font-weight="700" letter-spacing="0.5" fill="#16233b">${esc((b.role||"Division").toUpperCase())}</text>`;
+      } else {
+        svg+=`<rect x="${x}" y="${y}" width="${r.w}" height="${r.h}" rx="10" fill="#ffffff" stroke="#cdd5df"/>`;
+        svg+=`<rect x="${x+1}" y="${y+1}" width="${r.w-2}" height="5" rx="2" fill="${b.color}"/>`;
+        svg+=`<text x="${x+12}" y="${y+27}" font-family="-apple-system,Segoe UI,Roboto,Arial" font-size="13.5" font-weight="700" fill="#16233b">${esc(b.role||"Role")}</text>`;
+        svg+=`<text x="${x+12}" y="${y+45}" font-family="-apple-system,Segoe UI,Roboto,Arial" font-size="12.5" fill="#5d6b80">${esc(b.name||"")}</text>`;
+      }
+      svg+=`</g>`;
+    });
+    if(legendH){
+      let ly=H-legendH+10;
+      svg+=`<text x="${pad}" y="${ly}" font-family="-apple-system,Segoe UI,Roboto,Arial" font-size="11" font-weight="700" fill="#8b97a8" letter-spacing="1">DIVISIONS</text>`;
+      ly+=8;
+      used.forEach(c=>{ const d=COLORS.find(p=>p.c===c); const l=(c in state.legend)?state.legend[c]:(d?d.n:"");
+        ly+=18; svg+=`<rect x="${pad}" y="${ly-10}" width="12" height="12" rx="3" fill="${c}"/>`;
+        svg+=`<text x="${pad+20}" y="${ly}" font-family="-apple-system,Segoe UI,Roboto,Arial" font-size="12.5" fill="#16233b">${esc(l)}</text>`; });
+    }
+    svg+=`</svg>`;
+    const img=new Image(); const blob=new Blob([svg],{type:"image/svg+xml"}); const url=URL.createObjectURL(blob);
+    img.onload=()=>{
+      const sc=2; const cv=document.createElement("canvas"); cv.width=W*sc; cv.height=H*sc;
+      const ctx=cv.getContext("2d"); ctx.scale(sc,sc); ctx.drawImage(img,0,0);
+      URL.revokeObjectURL(url);
+      cv.toBlob(b=>download(b,"org-chart.png"),"image/png");
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); download(new Blob([svg],{type:"image/svg+xml"}),"org-chart.svg"); };
+    img.src=url;
+  }
+  function shiftPath(d,ox,oy){
+    let i=0;
+    return d.replace(/[A-Za-z]|-?\d+(\.\d+)?/g,(tok)=>{
+      if(/[A-Za-z]/.test(tok)){ i=0; return tok; }
+      const n=parseFloat(tok); const v=(i%2===0)?n+ox:n+oy; i++; return v.toFixed(1);
+    });
+  }
+  function esc(s){ return (s||"").replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+  function boxRect(b){
+    if(b.kind==="division"){return{x:b.x-5,y:b.y,w:190,h:50};}
+    return{x:b.x,y:b.y,w:190,h:70};
+  }
+
+  /* Event wiring */
+  document.getElementById("addBtn").onclick=()=>{ if(mode==="connect")setMode("select"); addBox("role"); };
+  document.getElementById("addDivBtn").onclick=()=>{ if(mode==="connect")setMode("select"); addBox("division"); };
+  document.getElementById("emptyAdd").onclick=()=>addBox("role");
+  document.getElementById("exampleBtn").onclick=loadExample;
+  document.getElementById("connectBtn").onclick=()=>setMode(mode==="connect"?"select":"connect");
+  document.getElementById("styleSeg").addEventListener("click",e=>{
+    const b=e.target.closest("button[data-style]"); if(!b) return;
+    lineStyle=b.dataset.style;
+    document.querySelectorAll("#styleSeg button").forEach(x=>x.classList.toggle("active",x===b));
+    if(selArrow){ const a=state.arrows.find(o=>o.id===selArrow); if(a){pushHistory();a.type=lineStyle;renderArrows();showApop();afterChange();} }
+    setHint();
+  });
+  document.getElementById("snapBtn").onclick=()=>{
+    snapGrid=!snapGrid;
+    document.getElementById("snapBtn").classList.toggle("on",snapGrid);
+  };
+  document.getElementById("saveBtn").onclick=save;
+  document.getElementById("openBtn").onclick=()=>document.getElementById("fileInput").click();
+  document.getElementById("fileInput").addEventListener("change",e=>{ if(e.target.files[0]){openFile(e.target.files[0]); e.target.value="";} });
+  document.getElementById("pngBtn").onclick=exportPNG;
+  document.getElementById("zoomIn").onclick=()=>zoomBy(1.2);
+  document.getElementById("zoomOut").onclick=()=>zoomBy(1/1.2);
+  document.getElementById("zoomLvl").onclick=resetZoom;
+  document.getElementById("zoomFit").onclick=fitView;
+  document.getElementById("fitTop").onclick=fitView;
+  document.getElementById("legendToggle").onclick=()=>{
+    const l=document.getElementById("legend"); l.classList.toggle("collapsed");
+    document.getElementById("legendToggle").textContent=l.classList.contains("collapsed")?"▸":"▾";
+  };
+
+  document.addEventListener("keydown",e=>{
+    const typing=document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName);
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"){ e.preventDefault(); undo(); return; }
+    if(typing) return;
+    if(e.key==="a"||e.key==="A"){ e.preventDefault(); addBox("role"); }
+    else if(e.key==="d"||e.key==="D"){ e.preventDefault(); addBox("division"); }
+    else if(e.key==="c"||e.key==="C"){ e.preventDefault(); setMode(mode==="connect"?"select":"connect"); }
+    else if(e.key==="f"||e.key==="F"){ e.preventDefault(); fitView(); }
+    else if(e.key==="g"||e.key==="G"){ e.preventDefault(); snapGrid=!snapGrid; document.getElementById("snapBtn").classList.toggle("on",snapGrid); }
+    else if(e.key==="0"){ e.preventDefault(); resetZoom(); }
+    else if(e.key==="="||e.key==="+"){ e.preventDefault(); zoomBy(1.2); }
+    else if(e.key==="-"||e.key==="_"){ e.preventDefault(); zoomBy(1/1.2); }
+    else if(e.key==="Delete"||e.key==="Backspace"){
+      if(sel.size){ e.preventDefault(); deleteSelection(); }
+      else if(selArrow){ e.preventDefault(); pushHistory(); state.arrows=state.arrows.filter(a=>a.id!==selArrow); selArrow=null; renderArrows(); if(apop){apop.remove();apop=null;} afterChange(); }
+    }
+    else if(e.key==="Escape"){ if(mode==="connect")setMode("select"); else deselectAll(); }
+  });
+  function undo(){ if(!history.length) return; state=normalize(history.pop()); fullRender(); autosave(); }
+
+  function loadExample(){
+    pushHistory();
+    const N=COLORS[0],US=COLORS[1],GL=COLORS[2],BO=COLORS[3];
+    const R=(role,name,x,y,c)=>({id:uid("b"),kind:"role",role,name,x,y,color:c});
+    const D=(role,x,y,c)=>({id:uid("b"),kind:"division",role,name:"",x,y,color:c});
+    const board=D("Board of Directors",520,40,N);
+    const ceo  =R("President / CEO","Trevor",520,160,N);
+    const usH  =D("US Operations",230,300,US);
+    const glH  =D("Global Consulting",520,300,GL);
+    const boH  =D("Back Office",810,300,BO);
+    const site =R("Site Director","",170,430,US);
+    const grant=R("Grants & Dev.","",300,430,US);
+    const coord=R("Africa Coordinator","Greg",460,430,GL);
+    const latam=R("Latin America","Joel",640,430,GL);
+    const ops  =R("Operations Mgr","Kelly",760,430,BO);
+    const comm =R("Communications","Greg",900,430,BO);
+    state.boxes=[board,ceo,usH,glH,boH,site,grant,coord,latam,ops,comm];
+    const A=(f,t,ty="direct")=>({id:uid("a"),from:f.id,to:t.id,type:ty});
+    state.arrows=[A(board,ceo),A(ceo,usH),A(ceo,glH),A(ceo,boH),
+      A(usH,site),A(usH,grant),A(glH,coord),A(glH,latam),A(boH,ops),A(boH,comm),
+      A(ceo,comm,"secondary")];
+    state.legend={[US]:"US",[GL]:"Global",[BO]:"Back office"};
+    fullRender(); afterChange();
+    fitView();
+  }
+
+  /* Init */
+  (async function(){
+    const restored=await tryRestore();
+    document.getElementById("snapBtn").classList.add("on");
+    fullRender(); setMode("select");
+    if(restored && state.boxes.length){ fitView(); } else { applyView(); }
+    window.addEventListener("resize",positionOverlays);
+  })();
+  
+  function positionOverlays(){}
+  function applyView(){}
+  function setHint(){}
+})();
+</script>
+</body>
+</html>
